@@ -2,7 +2,7 @@
 # renders --video with ffmpeg's built-in encoders). Built by .github/workflows/release.yml.
 id: io.github.evelynnsrepos.EvilFastCut
 runtime: org.freedesktop.Platform
-runtime-version: "24.08"
+runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
