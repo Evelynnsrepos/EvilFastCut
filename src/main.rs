@@ -20,6 +20,8 @@ Options:
   --breaths            also cut breaths between sentences
   --breath-drop DB     how much quieter than the speech a breath is      [default: 12]
                        (lower it to catch louder breaths)
+  --audio-track N      listen only to sound track N (1, 2, ...)        [default: all tracks mixed]
+                       (OBS with the mic on its own track: pick the mic's track)
   --xml FILE           where to write the sequence                       [default: VIDEO-fastcut.xml]
   --fcpxml FILE        also write an FCPXML for Final Cut Pro
   --video FILE         also render the trimmed video to FILE with ffmpeg
@@ -37,7 +39,7 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
-    let (mut input, mut xml, mut fcpxml, mut video) = (None, None, None, None);
+    let (mut input, mut xml, mut fcpxml, mut video, mut track) = (None, None, None, None, None);
     let mut s = detect::Settings::default();
     while let Some(a) = args.next() {
         let mut value = || args.next().ok_or(format!("{a} needs a value"));
@@ -51,10 +53,12 @@ fn run() -> Result<(), String> {
             "--padding" => s.padding = number(&a, &value()?, 0.0, 10.0)?,
             "--breaths" => s.breaths = true,
             "--breath-drop" => s.breath_drop_db = number(&a, &value()?, 0.0, 60.0)? as f32,
+            "--audio-track" => track = Some(number(&a, &value()?, 1.0, 64.0)? as usize - 1),
             "--xml" => xml = Some(PathBuf::from(value()?)),
             "--fcpxml" => fcpxml = Some(PathBuf::from(value()?)),
             "--video" => video = Some(PathBuf::from(value()?)),
             _ if a.starts_with('-') => return Err(format!("unknown option {a} (try --help)")),
+            _ if input.is_some() => return Err(format!("give one video at a time (got a second one: {a})")),
             _ => input = Some(PathBuf::from(a)),
         }
     }
@@ -63,7 +67,7 @@ fn run() -> Result<(), String> {
         return Err("no video given".into());
     };
     let out = Outputs { xml: Some(xml.unwrap_or_else(|| default_outputs(&input).xml.unwrap_or_default())), fcpxml, video };
-    cut(&input, &s, &out, &mut |line| println!("{line}"))
+    cut(&input, &s, track, &out, &mut |line| println!("{line}"))
 }
 
 fn number(opt: &str, v: &str, lo: f64, hi: f64) -> Result<f64, String> {

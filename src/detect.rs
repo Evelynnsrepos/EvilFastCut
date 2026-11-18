@@ -10,6 +10,10 @@ const MIN_LAG: usize = 40; // 400 Hz
 const MAX_LAG: usize = 228; // 70 Hz
 const BREATH_MIN: usize = 15; // frames: a breath is 0.15 ..
 const BREATH_MAX: usize = 120; // .. 1.2 s long
+// Breaths measured 0.28-0.37 here; s/sh/f/th 0.45-0.61, so "Shh" or "sixth" is not taken for one.
+const HISS: f32 = 0.42;
+const FLOOR_MARGIN: f32 = 8.0; // dB above the background noise that counts as a sound
+const BREATH_PAD: f64 = 0.03; // seconds kept between a word and a breath cut right against it
 const VOICED: f32 = 0.45; // normalised autocorrelation above this means a voice is sounding
 
 #[derive(Clone, Copy)]
@@ -54,9 +58,11 @@ pub fn keep_ranges(samples: &[f32], s: &Settings) -> Vec<(f64, f64)> {
         }
         let (g0, g1) = (start as f64 * 0.01, (i as f64 * 0.01).min(total));
         if g1 - g0 >= s.min_silence || breath[start..i].contains(&true) {
-            // Pad inwards, except at the very start and end of the recording.
-            let a = if start == 0 { 0.0 } else { g0 + s.padding };
-            let b = if i == n { total } else { g1 - s.padding };
+            // Pad inwards, except at the very start and end of the recording. A breath right
+            // against a word gets a short pad, or breaths between words would never be cut.
+            let pad = |is_breath: bool| if is_breath { s.padding.min(BREATH_PAD) } else { s.padding };
+            let a = if start == 0 { 0.0 } else { g0 + pad(breath[start]) };
+            let b = if i == n { total } else { g1 - pad(breath[i - 1]) };
             if b > a {
                 gaps.push((a, b));
             }
@@ -87,7 +93,8 @@ fn level_db(w: &[f32]) -> f32 {
     10.0 * (ms + 1e-12).log10()
 }
 
-/// Breaths: runs of 0.15-1.2 s that are audible, well below the speech level and have no pitch.
+/// Breaths: runs of 0.15-1.2 s that are above the background noise, well below the speech level
+/// and have no pitch. They may be quieter than the silence threshold.
 fn find_breaths(samples: &[f32], db: &[f32], silent: &[bool], s: &Settings) -> Vec<bool> {
     let mut loud: Vec<f32> = db.iter().zip(silent).filter(|(_, s)| !**s).map(|(d, _)| *d).collect();
     let n = db.len();
@@ -97,15 +104,21 @@ fn find_breaths(samples: &[f32], db: &[f32], silent: &[bool], s: &Settings) -> V
     loud.sort_by(f32::total_cmp);
     let speech = loud[(loud.len() - 1) * 95 / 100];
     let limit = speech - s.breath_drop_db;
-    // Pitch is only measured on quiet, non-silent frames, which keeps this fast on long files.
-    let mut cand: Vec<bool> = (0..n).map(|i| !silent[i] && db[i] < limit && voicing(window(samples, i, PITCH_WIN)) < VOICED).collect();
+    // Background noise: the quietest tenth of the silent frames (a breath can be quieter than the
+    // silence threshold, but not as quiet as the room).
+    let mut quiet: Vec<f32> = db.iter().zip(silent).filter(|(_, s)| **s).map(|(d, _)| *d).collect();
+    quiet.sort_by(f32::total_cmp);
+    let floor = quiet.get(quiet.len().saturating_sub(1) / 10).map_or(s.threshold_db, |q| q + FLOOR_MARGIN);
+    let heard = |i: usize| db[i] > floor;
+    // Pitch is only measured on quiet frames above the floor, which keeps this fast on long files.
+    let mut cand: Vec<bool> = (0..n).map(|i| heard(i) && db[i] < limit && hiss(window(samples, i, WIN)) < HISS && voicing(window(samples, i, PITCH_WIN)) < VOICED).collect();
 
     // Close holes of up to 3 frames, then keep runs of breath length.
     let mut i = 0;
     while i < n {
         if cand[i] {
             let mut j = i + 1;
-            while j < n && (cand[j] || (j + 3 < n && cand[j + 1..=j + 3].contains(&true) && !silent[j])) {
+            while j < n && (cand[j] || (j + 3 < n && cand[j + 1..=j + 3].contains(&true) && heard(j))) {
                 j += 1;
             }
             let keep = (BREATH_MIN..=BREATH_MAX).contains(&(j - i));
@@ -116,6 +129,11 @@ fn find_breaths(samples: &[f32], db: &[f32], silent: &[bool], s: &Settings) -> V
         }
     }
     cand
+}
+
+/// Zero crossings per sample: high for s/sh/f/th hiss (energy at 3-8 kHz), lower for a breath.
+fn hiss(w: &[f32]) -> f32 {
+    w.windows(2).filter(|p| (p[0] >= 0.0) != (p[1] >= 0.0)).count() as f32 / w.len().max(1) as f32
 }
 
 /// Highest normalised autocorrelation over voice pitches (70-400 Hz): near 1 for a voiced sound.
@@ -141,12 +159,15 @@ mod tests {
     fn tone(secs: f64, hz: f32, amp: f32) -> Vec<f32> {
         (0..(secs * RATE as f64) as usize).map(|i| amp * (i as f32 * hz * std::f32::consts::TAU / RATE as f32).sin()).collect()
     }
-    fn noise(secs: f64, amp: f32) -> Vec<f32> {
-        let mut x = 12345u32;
+    /// White noise (a hissed "sss"), or with `breathy` lowpassed like an inhale.
+    fn noise(secs: f64, amp: f32, breathy: bool) -> Vec<f32> {
+        let (mut x, mut y) = (12345u32, 0.0f32);
         (0..(secs * RATE as f64) as usize)
             .map(|_| {
                 x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-                amp * ((x >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0)
+                let r = (x >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0;
+                y = if breathy { 0.6 * y + 0.4 * r } else { r };
+                amp * y
             })
             .collect()
     }
@@ -178,10 +199,22 @@ mod tests {
 
     #[test]
     fn breaths_cut_only_when_asked() {
-        let a = [tone(1.0, 150.0, 0.5), noise(0.4, 0.05), tone(1.0, 150.0, 0.5)].concat(); // breath ~ -31 dB
+        let a = [tone(1.0, 150.0, 0.5), noise(0.4, 0.1, true), tone(1.0, 150.0, 0.5)].concat(); // breath ~ -31 dB
         near(&keep_ranges(&a, &Settings::default()), &[(0.0, 2.4)]);
         let s = Settings { breaths: true, ..Default::default() };
-        near(&keep_ranges(&a, &s), &[(0.0, 1.1), (1.3, 2.4)]);
+        near(&keep_ranges(&a, &s), &[(0.0, 1.03), (1.37, 2.4)]);
+    }
+
+    #[test]
+    fn hiss_is_not_a_breath() {
+        let a = [tone(1.0, 150.0, 0.5), noise(0.4, 0.05, false), tone(1.0, 150.0, 0.5)].concat();
+        near(&keep_ranges(&a, &Settings { breaths: true, ..Default::default() }), &[(0.0, 2.4)]);
+    }
+
+    #[test]
+    fn quiet_breath_below_the_silence_threshold_is_cut() {
+        let a = [tone(1.0, 150.0, 0.5), noise(0.3, 0.012, true), tone(1.0, 150.0, 0.5), vec![0.0; 16_000]].concat(); // ~ -48 dB
+        near(&keep_ranges(&a, &Settings { breaths: true, ..Default::default() }), &[(0.0, 1.03), (1.2, 2.4)]);
     }
 
     #[test]

@@ -43,7 +43,7 @@ Get the download for your computer from the
 |---|---|
 | Windows | `evil-fastcut-windows.zip` |
 | Mac (Intel or Apple chip) | `evil-fastcut-macos.zip` |
-| Linux | `evil-fastcut-linux.zip` |
+| Linux (Ubuntu 22.04, Debian 12 or newer) | `evil-fastcut-linux.zip` |
 | Linux with Flatpak (Steam Deck, Fedora Silverblue, Bazzite…) | `evil-fastcut.flatpak` |
 
 **Flatpak:** ffmpeg is already inside, so there's nothing else to install. Double-click the file
@@ -72,11 +72,17 @@ external drives.
    - **Keep around each cut** (0.1 s): raise it if the starts or ends of words get clipped.
    - **Also cut breaths**, and how much quieter than your voice a breath is (12 dB). Lower that
      if loud breaths stay in.
+   - **Listen to:** all sound tracks (default), or one. Recorded with OBS and your mic on its own
+     track? Pick the mic's track, so game sound or music doesn't count as talking.
 3. Tick what to save, and click **✂ Cut**.
 4. In FilmCraft: **File ▸ Import** and pick `MyVideo-fastcut.xml`.
 
-Breath detection is a best guess: an "s" or "f" at the end of a word that trails off can look
-like a breath, so check the cuts and drag them open in your editor if needed.
+Breath detection is a best guess: it looks for soft, voiceless sounds that aren't hissy like
+"s", "sh" or "f". Check the cuts and drag any open in your editor if needed.
+
+The trimmed video is re-encoded at high quality. The Flatpak's built-in ffmpeg has no H.264
+encoder, so a trimmed `.mp4` from the Flatpak uses the older MPEG-4 codec (bigger files); the
+timelines for your editor are not affected.
 
 ### Command line
 
@@ -94,9 +100,13 @@ evil-fastcut MyVideo.mp4 --breaths --fcpxml MyVideo.fcpxml --video MyVideo-cut.m
 | `--padding SEC` | `0.1` | Sound kept before and after each cut. |
 | `--breaths` | off | Also cut breaths (quiet, voiceless sounds 0.15-1.2 s long between phrases). |
 | `--breath-drop DB` | `12` | How much quieter than your speech a breath is. |
+| `--audio-track N` | all, mixed | Only listen to sound track N (1, 2, ...). |
 | `--xml FILE` | next to the video | Where to save the FilmCraft / Resolve / Premiere timeline. |
 | `--fcpxml FILE` | off | Also save an FCPXML for Final Cut Pro. |
 | `--video FILE` | off | Also render a trimmed video with ffmpeg. |
+
+Files whose sound starts a little after the picture (screen recorders, camcorders) are lined up
+automatically, and camera timecode is kept in the Final Cut file.
 
 ## Build from source (for developers)
 

@@ -20,6 +20,8 @@ struct App {
     xml: bool,
     fcpxml: bool,
     trimmed: bool,
+    /// None = all sound tracks mixed.
+    track: Option<usize>,
     log: Vec<String>,
     running: Option<Receiver<Msg>>,
 }
@@ -33,7 +35,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Evil Fast Cut",
         options,
-        Box::new(move |_| Ok(Box::new(App { video, s: Settings::default(), xml: true, fcpxml: false, trimmed: false, log: Vec::new(), running: None }))),
+        Box::new(move |_| Ok(Box::new(App { video, s: Settings::default(), xml: true, fcpxml: false, trimmed: false, track: None, log: Vec::new(), running: None }))),
     )
 }
 
@@ -42,13 +44,13 @@ impl App {
         let Some(video) = self.video.clone() else { return };
         let all = default_outputs(&video);
         let out = Outputs { xml: all.xml.filter(|_| self.xml), fcpxml: all.fcpxml.filter(|_| self.fcpxml), video: all.video.filter(|_| self.trimmed) };
-        let s = self.s;
+        let (s, track) = (self.s, self.track);
         let (tx, rx) = channel();
         let ctx = ctx.clone();
         self.log = vec![format!("Listening to {}…", video.file_name().unwrap_or_default().to_string_lossy())];
         self.running = Some(rx);
         std::thread::spawn(move || {
-            let result = cut(&video, &s, &out, &mut |line| {
+            let result = cut(&video, &s, track, &out, &mut |line| {
                 let _ = tx.send(Msg::Line(line));
                 ctx.request_repaint();
             });
@@ -117,6 +119,16 @@ impl eframe::App for App {
                     ui.checkbox(&mut self.s.breaths, "Also cut breaths");
                     ui.add_enabled(self.s.breaths, egui::Slider::new(&mut self.s.breath_drop_db, 4.0..=24.0).suffix(" dB quieter").step_by(1.0))
                         .on_hover_text("How much quieter than your voice a breath is. Lower it if loud breaths stay in.");
+                    ui.end_row();
+                    ui.label("Listen to");
+                    let name = |t: Option<usize>| t.map_or("All sound tracks".to_string(), |t| format!("Sound track {}", t + 1));
+                    egui::ComboBox::from_id_salt("track").selected_text(name(self.track)).show_ui(ui, |ui| {
+                        for t in std::iter::once(None).chain((0..8).map(Some)) {
+                            ui.selectable_value(&mut self.track, t, name(t));
+                        }
+                    })
+                    .response
+                    .on_hover_text("Recorded with OBS and the mic on its own track? Pick the mic's track, so game sound or music doesn't count as talking.");
                     ui.end_row();
                 });
                 ui.add_space(8.0);

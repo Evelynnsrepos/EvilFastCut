@@ -10,6 +10,8 @@ pub struct Media {
     pub ntsc: bool,
     /// Length of the source in frames.
     pub frames: u64,
+    /// The source's starting timecode in frames (camera files; 0 for phones and screen recordings).
+    pub timecode: u64,
     pub video: Option<(u32, u32)>,
     /// Sample rate and channel count.
     pub audio: Option<(u32, u32)>,
@@ -99,7 +101,8 @@ pub fn write_fcpxml(m: &Media, seq_name: &str, keeps: &[(u64, u64)], fps: (u64, 
     let _ = writeln!(x, "<format id=\"r1\" frameDuration=\"{}/{}s\" width=\"{w}\" height=\"{h}\"/>", fps.1, fps.0);
     let _ = writeln!(
         x,
-        "<asset id=\"r2\" name=\"{name}\" start=\"0s\" duration=\"{}\" hasVideo=\"{}\" hasAudio=\"{}\" format=\"r1\" audioSources=\"1\" audioChannels=\"{ch}\" audioRate=\"{sr}\"><media-rep kind=\"original-media\" src=\"{}\"/></asset>",
+        "<asset id=\"r2\" name=\"{name}\" start=\"{}\" duration=\"{}\" hasVideo=\"{}\" hasAudio=\"{}\" format=\"r1\" audioSources=\"1\" audioChannels=\"{ch}\" audioRate=\"{sr}\"><media-rep kind=\"original-media\" src=\"{}\"/></asset>",
+        t(m.timecode),
         t(m.frames),
         u8::from(m.video.is_some()),
         u8::from(m.audio.is_some()),
@@ -109,7 +112,7 @@ pub fn write_fcpxml(m: &Media, seq_name: &str, keeps: &[(u64, u64)], fps: (u64, 
     let _ = writeln!(x, "<sequence format=\"r1\" duration=\"{}\" tcStart=\"0s\" tcFormat=\"NDF\"><spine>", t(total));
     let mut offset = 0;
     for (a, b) in keeps {
-        let _ = writeln!(x, "<asset-clip ref=\"r2\" name=\"{name}\" offset=\"{}\" start=\"{}\" duration=\"{}\" format=\"r1\" tcFormat=\"NDF\"/>", t(offset), t(*a), t(b - a));
+        let _ = writeln!(x, "<asset-clip ref=\"r2\" name=\"{name}\" offset=\"{}\" start=\"{}\" duration=\"{}\" format=\"r1\" tcFormat=\"NDF\"/>", t(offset), t(m.timecode + a), t(b - a));
         offset += b - a;
     }
     x.push_str("</spine></sequence></project></event></library>\n</fcpxml>\n");
@@ -123,8 +126,13 @@ fn esc(s: &str) -> String {
 /// `file://` URL of an absolute path (Windows paths become `file:///C:/...`).
 pub fn file_url(path: &str) -> String {
     let p = path.replace('\\', "/");
-    let p = p.strip_prefix("//?/").unwrap_or(&p);
-    let mut out = String::from(if p.starts_with('/') { "file://" } else { "file:///" });
+    // Windows long paths: \\?\C:\x is C:/x, and \\?\UNC\server\share\x is //server/share/x.
+    let p = match p.strip_prefix("//?/UNC/") {
+        Some(unc) => format!("//{unc}"),
+        None => p.strip_prefix("//?/").unwrap_or(&p).to_string(),
+    };
+    // file:// + /local/path, file:///C:/path, or file://server/share/path for a network share.
+    let mut out = String::from(if p.starts_with("//") { "file:" } else if p.starts_with('/') { "file://" } else { "file:///" });
     for b in p.bytes() {
         if b.is_ascii_alphanumeric() || b"-._~/:".contains(&b) {
             out.push(b as char);
@@ -143,11 +151,12 @@ mod tests {
     fn urls() {
         assert_eq!(file_url("/home/me/My Clip #1.mp4"), "file:///home/me/My%20Clip%20%231.mp4");
         assert_eq!(file_url(r"\\?\C:\Users\me\a b.mov"), "file:///C:/Users/me/a%20b.mov");
+        assert_eq!(file_url(r"\\?\UNC\nas\videos\a.mp4"), "file://nas/videos/a.mp4");
     }
 
     #[test]
     fn clips_are_back_to_back_and_file_defined_once() {
-        let m = Media { name: "a&b.mp4".into(), url: "file:///a".into(), timebase: 30, ntsc: true, frames: 300, video: Some((1920, 1080)), audio: Some((48_000, 2)) };
+        let m = Media { name: "a&b.mp4".into(), url: "file:///a".into(), timebase: 30, ntsc: true, frames: 300, timecode: 0, video: Some((1920, 1080)), audio: Some((48_000, 2)) };
         let x = write(&m, "a (auto cut)", &[(0, 33), (57, 90)]);
         assert!(x.contains("<start>0</start><end>33</end><in>0</in><out>33</out>"));
         assert!(x.contains("<start>33</start><end>66</end><in>57</in><out>90</out>"));
@@ -158,12 +167,16 @@ mod tests {
 
     #[test]
     fn fcpxml_uses_exact_frame_times() {
-        let m = Media { name: "a.mp4".into(), url: "file:///a.mp4".into(), timebase: 30, ntsc: true, frames: 300, video: Some((1920, 1080)), audio: Some((48_000, 2)) };
+        let m = Media { name: "a.mp4".into(), url: "file:///a.mp4".into(), timebase: 30, ntsc: true, frames: 300, timecode: 0, video: Some((1920, 1080)), audio: Some((48_000, 2)) };
         let x = write_fcpxml(&m, "a (fast cut)", &[(0, 33), (57, 90)], (30000, 1001));
         assert!(x.contains("frameDuration=\"1001/30000s\""));
         assert!(x.contains("offset=\"0s\" start=\"0s\" duration=\"33033/30000s\""));
         assert!(x.contains("offset=\"33033/30000s\" start=\"57057/30000s\" duration=\"33033/30000s\""));
         assert!(x.contains("<sequence format=\"r1\" duration=\"66066/30000s\""));
         assert_eq!(x.matches("<asset-clip ").count(), 2);
+        let m = Media { timecode: 107_892, ..m };
+        let x = write_fcpxml(&m, "a", &[(57, 90)], (30000, 1001));
+        assert!(x.contains("start=\"107999892/30000s\" duration=\"300300/30000s\""), "{x}");
+        assert!(x.contains(&format!("start=\"{}/30000s\" duration=\"33033/30000s\"", (107_892 + 57) * 1001)), "{x}");
     }
 }
