@@ -1,0 +1,44 @@
+# Push a tag like v0.1.0 (or run this from Actions ▸ Release ▸ Run workflow) to build
+# Evil Fast Cut for Windows, macOS and Linux and publish it as a GitHub Release.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.1.0"
+        required: true
+permissions:
+  contents: write
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: linux, exe: evil-fastcut }
+          - { os: macos-latest, name: macos, exe: evil-fastcut }
+          - { os: windows-latest, name: windows, exe: evil-fastcut.exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test
+      - run: cargo build --release
+      - run: |
+          mkdir out
+          cp target/release/${{ matrix.exe }} out/
+          cd out && 7z a ../evil-fastcut-${{ matrix.name }}.zip ${{ matrix.exe }}
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with: { name: "${{ matrix.name }}", path: "evil-fastcut-${{ matrix.name }}.zip" }
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { merge-multiple: true }
+      - run: gh release create "$TAG" evil-fastcut-*.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Evil Fast Cut $TAG" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
