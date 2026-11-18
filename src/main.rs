@@ -24,6 +24,7 @@ Options:
   --breath-drop DB     how much quieter than the speech a breath is      [default: 12]
                        (lower it to catch louder breaths)
   --xml FILE           where to write the sequence                       [default: VIDEO-fastcut.xml]
+  --fcpxml FILE        also write an FCPXML for Final Cut Pro
   --video FILE         also render the trimmed video to FILE with ffmpeg
   -h, --help           show this help
 
@@ -39,7 +40,7 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
-    let (mut input, mut xml, mut video) = (None, None, None);
+    let (mut input, mut xml, mut fcpxml, mut video) = (None, None, None, None);
     let mut s = detect::Settings::default();
     while let Some(a) = args.next() {
         let mut value = || args.next().ok_or(format!("{a} needs a value"));
@@ -54,6 +55,7 @@ fn run() -> Result<(), String> {
             "--breaths" => s.breaths = true,
             "--breath-drop" => s.breath_drop_db = number(&a, &value()?, 0.0, 60.0)? as f32,
             "--xml" => xml = Some(PathBuf::from(value()?)),
+            "--fcpxml" => fcpxml = Some(PathBuf::from(value()?)),
             "--video" => video = Some(PathBuf::from(value()?)),
             _ if a.starts_with('-') => return Err(format!("unknown option {a} (try --help)")),
             _ => input = Some(PathBuf::from(a)),
@@ -63,11 +65,13 @@ fn run() -> Result<(), String> {
         print!("{HELP}");
         return Err("no video given".into());
     };
-    let input = std::fs::canonicalize(&input).map_err(|e| format!("can't open {}: {e}", input.display()))?;
+    let given = input;
+    // ffmpeg gets the path as typed: Windows' canonical form (\\?\C:\...) is only for the file URL.
+    let input = std::fs::canonicalize(&given).map_err(|e| format!("can't open {}: {e}", given.display()))?;
 
-    let p = probe(&input)?;
+    let p = probe(&given)?;
     let Some(audio) = p.audio else { return Err("this file has no sound to look at".into()) };
-    let samples = decode(&input)?;
+    let samples = decode(&given)?;
     let keeps = detect::keep_ranges(&samples, &s);
 
     // Snap to whole frames, never past the end, merging ranges that now touch.
@@ -111,8 +115,12 @@ fn run() -> Result<(), String> {
     std::fs::write(&xml, fcp7::write(&media, &format!("{stem} (fast cut)"), &cuts)).map_err(|e| format!("can't write {}: {e}", xml.display()))?;
     println!("Wrote {}", xml.display());
 
+    if let Some(out) = fcpxml {
+        std::fs::write(&out, fcp7::write_fcpxml(&media, &format!("{stem} (fast cut)"), &cuts, p.fps)).map_err(|e| format!("can't write {}: {e}", out.display()))?;
+        println!("Wrote {}", out.display());
+    }
     if let Some(out) = video {
-        render(&input, &out, &cuts, fps, p.video.is_some())?;
+        render(&given, &out, &cuts, fps, p.video.is_some())?;
         println!("Wrote {}", out.display());
     }
     Ok(())

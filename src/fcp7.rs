@@ -87,6 +87,35 @@ pub fn write(m: &Media, seq_name: &str, keeps: &[(u64, u64)]) -> String {
     x
 }
 
+/// The same cut as FCPXML 1.9, for Final Cut Pro. `fps` is the exact rate as (numerator, denominator).
+pub fn write_fcpxml(m: &Media, seq_name: &str, keeps: &[(u64, u64)], fps: (u64, u64)) -> String {
+    let t = |f: u64| if f == 0 { "0s".to_string() } else { format!("{}/{}s", f * fps.1, fps.0) };
+    let (w, h) = m.video.unwrap_or((1920, 1080));
+    let (sr, ch) = m.audio.unwrap_or((48_000, 2));
+    let total: u64 = keeps.iter().map(|(a, b)| b - a).sum();
+    let name = esc(&m.name);
+    let mut x = String::new();
+    let _ = writeln!(x, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n<fcpxml version=\"1.9\">\n<resources>");
+    let _ = writeln!(x, "<format id=\"r1\" frameDuration=\"{}/{}s\" width=\"{w}\" height=\"{h}\"/>", fps.1, fps.0);
+    let _ = writeln!(
+        x,
+        "<asset id=\"r2\" name=\"{name}\" start=\"0s\" duration=\"{}\" hasVideo=\"{}\" hasAudio=\"{}\" format=\"r1\" audioSources=\"1\" audioChannels=\"{ch}\" audioRate=\"{sr}\"><media-rep kind=\"original-media\" src=\"{}\"/></asset>",
+        t(m.frames),
+        u8::from(m.video.is_some()),
+        u8::from(m.audio.is_some()),
+        esc(&m.url)
+    );
+    let _ = writeln!(x, "</resources>\n<library><event name=\"Evil Fast Cut\"><project name=\"{}\">", esc(seq_name));
+    let _ = writeln!(x, "<sequence format=\"r1\" duration=\"{}\" tcStart=\"0s\" tcFormat=\"NDF\"><spine>", t(total));
+    let mut offset = 0;
+    for (a, b) in keeps {
+        let _ = writeln!(x, "<asset-clip ref=\"r2\" name=\"{name}\" offset=\"{}\" start=\"{}\" duration=\"{}\" format=\"r1\" tcFormat=\"NDF\"/>", t(offset), t(*a), t(b - a));
+        offset += b - a;
+    }
+    x.push_str("</spine></sequence></project></event></library>\n</fcpxml>\n");
+    x
+}
+
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
@@ -125,5 +154,16 @@ mod tests {
         assert_eq!(x.matches("<pathurl>").count(), 1);
         assert_eq!(x.matches("<clipitem ").count(), 4);
         assert!(x.contains("<name>a&amp;b.mp4</name>"));
+    }
+
+    #[test]
+    fn fcpxml_uses_exact_frame_times() {
+        let m = Media { name: "a.mp4".into(), url: "file:///a.mp4".into(), timebase: 30, ntsc: true, frames: 300, video: Some((1920, 1080)), audio: Some((48_000, 2)) };
+        let x = write_fcpxml(&m, "a (fast cut)", &[(0, 33), (57, 90)], (30000, 1001));
+        assert!(x.contains("frameDuration=\"1001/30000s\""));
+        assert!(x.contains("offset=\"0s\" start=\"0s\" duration=\"33033/30000s\""));
+        assert!(x.contains("offset=\"33033/30000s\" start=\"57057/30000s\" duration=\"33033/30000s\""));
+        assert!(x.contains("<sequence format=\"r1\" duration=\"66066/30000s\""));
+        assert_eq!(x.matches("<asset-clip ").count(), 2);
     }
 }

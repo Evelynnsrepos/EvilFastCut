@@ -1,5 +1,5 @@
-# Push a tag like v0.1.0 (or run this from Actions ▸ Release ▸ Run workflow) to build
-# Evil Fast Cut for Windows, macOS and Linux and publish it as a GitHub Release.
+# Push a tag like v0.1.0, or run this from Actions ▸ Release ▸ Run workflow, to build Evil Fast Cut
+# for Windows, macOS (Intel and Apple chips), Linux and Flatpak and publish it as a GitHub Release.
 name: Release
 on:
   push:
@@ -19,13 +19,22 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, name: linux, exe: evil-fastcut }
-          - { os: macos-latest, name: macos, exe: evil-fastcut }
           - { os: windows-latest, name: windows, exe: evil-fastcut.exe }
+          - { os: macos-latest, name: macos, exe: evil-fastcut }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - run: cargo test
       - run: cargo build --release
+        if: matrix.name != 'macos'
+      - name: Universal macOS binary (Intel + Apple chips)
+        if: matrix.name == 'macos'
+        run: |
+          rustup target add x86_64-apple-darwin aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          mkdir -p target/release
+          lipo -create -output target/release/evil-fastcut target/{x86_64,aarch64}-apple-darwin/release/evil-fastcut
       - run: |
           mkdir out
           cp target/release/${{ matrix.exe }} out/
@@ -33,12 +42,26 @@ jobs:
         shell: bash
       - uses: actions/upload-artifact@v4
         with: { name: "${{ matrix.name }}", path: "evil-fastcut-${{ matrix.name }}.zip" }
+  flatpak:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: evil-fastcut.flatpak
+          manifest-path: flatpak/io.github.evelynnsrepos.EvilFastCut.yml
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        with: { name: flatpak, path: evil-fastcut.flatpak }
   release:
-    needs: build
+    needs: [build, flatpak]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with: { merge-multiple: true }
-      - run: gh release create "$TAG" evil-fastcut-*.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Evil Fast Cut $TAG" --generate-notes
+      - run: gh release create "$TAG" evil-fastcut-*.zip evil-fastcut.flatpak --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Evil Fast Cut $TAG" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

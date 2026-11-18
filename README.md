@@ -25,19 +25,42 @@ You get:
 
 - **`MyVideo-fastcut.xml`**: open it in FilmCraft with **File ▸ Import** and you get a new
   sequence, *MyVideo (fast cut)*, with every kept piece on the timeline, video and sound linked.
-  You can still drag any cut open again if it took too much. (The same file also opens in
-  Premiere Pro and DaVinci Resolve.)
+  You can still drag any cut open again if it took too much.
+- **Other editors:** the same XML opens in **DaVinci Resolve** (File ▸ Import ▸ Timeline…) and
+  **Premiere Pro** (File ▸ Import…). For **Final Cut Pro**, add `--fcpxml MyVideo.fcpxml` and
+  open that with File ▸ Import ▸ XML….
 - **A trimmed video** too, if you add `--video MyVideo-cut.mp4`.
 
 FilmCraft doesn't load plug-ins yet, so Evil Fast Cut is a small program you run next to it.
 
 ## Install
 
+Get the download for your computer from the
+[**Releases** page](https://github.com/Evelynnsrepos/EvilFastCut/releases/latest):
+
+| Your system | Download |
+|---|---|
+| Windows | `evil-fastcut-windows.zip` |
+| Mac (Intel or Apple chip) | `evil-fastcut-macos.zip` |
+| Linux | `evil-fastcut-linux.zip` |
+| Linux with Flatpak only (Steam Deck, Fedora Silverblue, Bazzite…) | `evil-fastcut.flatpak` |
+
+**Flatpak:** ffmpeg is already inside, so there's nothing else to install. Install and run it with
+
+```sh
+flatpak install --user evil-fastcut.flatpak
+flatpak run io.github.evelynnsrepos.EvilFastCut ~/Videos/MyVideo.mp4 --breaths
+```
+
+It can read and write videos in your home folder and on external drives (`/media`, `/run/media`, `/mnt`).
+
+**Windows, Mac, Linux zip:**
+
 1. Install **ffmpeg** (it reads the sound): [ffmpeg.org/download.html](https://ffmpeg.org/download.html).
    Windows: `winget install ffmpeg` · Mac: `brew install ffmpeg` · Linux: `sudo apt install ffmpeg`.
-2. Download Evil Fast Cut for your computer from the
-   [**Releases** page](https://github.com/Evelynnsrepos/EvilFastCut/releases/latest)
-   (`evil-fastcut-windows.zip`, `-macos.zip` or `-linux.zip`) and unzip it.
+2. Unzip the download.
+3. **Mac only:** the first time, macOS blocks programs from the internet. In Terminal, in the
+   unzipped folder, run `xattr -d com.apple.quarantine evil-fastcut` once.
 
 ## Use it
 
@@ -62,6 +85,7 @@ Then in FilmCraft: **File ▸ Import**, pick `MyVideo-fastcut.xml`.
 | `--breaths` | off | Also cut breaths: quiet sounds with no voice in them, 0.15-1.2 s long, between phrases. |
 | `--breath-drop DB` | `12` | How much quieter than your speech a breath is. Lower it (`8`) if loud breaths stay in. |
 | `--xml FILE` | next to the video | Where to save the sequence. |
+| `--fcpxml FILE` | off | Also save an FCPXML for Final Cut Pro. |
 | `--video FILE` | off | Also render a trimmed video with ffmpeg. |
 
 Run `evil-fastcut --help` to see them all.
@@ -77,8 +101,8 @@ cargo build --release   # → target/release/evil-fastcut
 cargo test
 ```
 
-Releases are built for Windows, macOS and Linux by `.github/workflows/release.yml` when a `v*`
-tag is pushed, or from **Actions ▸ Release ▸ Run workflow**.
+Releases (Windows, universal macOS, Linux and the Flatpak in `flatpak/`) are built by
+`.github/workflows/release.yml` when a `v*` tag is pushed, or from **Actions ▸ Release ▸ Run workflow**.
 
 ## Community
 

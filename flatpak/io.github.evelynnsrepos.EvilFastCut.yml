@@ -1,0 +1,38 @@
+# Flatpak of the command-line tool, with its own ffmpeg (LGPL build: decodes everything,
+# renders --video with ffmpeg's built-in encoders). Built by .github/workflows/release.yml.
+id: io.github.evelynnsrepos.EvilFastCut
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: evil-fastcut
+finish-args:
+  # Read videos and write the cut files next to them.
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+modules:
+  - name: ffmpeg
+    config-opts:
+      - --disable-debug
+      - --disable-doc
+      - --disable-ffplay
+      - --disable-static
+      - --enable-shared
+    sources:
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n7.1.1
+  - name: evil-fastcut
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+    build-commands:
+      - cargo build --release --offline # no crate dependencies, so no network needed
+      - install -Dm755 target/release/evil-fastcut /app/bin/evil-fastcut
+    sources:
+      - type: dir
+        path: ..
+        skip: [target, .git]
