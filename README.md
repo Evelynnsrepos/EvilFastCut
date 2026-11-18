@@ -17,21 +17,22 @@
 </p>
 ## What it does
 
-Evil Fast Cut listens to your video, finds the parts with no sound, and gives you a FilmCraft
-sequence with those parts already cut out. Turn on `--breaths` and it also cuts the breaths
-between sentences. Nothing is changed in your original file.
+Evil Fast Cut listens to your video, finds the parts with no sound, and gives you a timeline with
+those parts already cut out. Tick **Also cut breaths** and it cuts the breaths between sentences
+too. Your original file is never changed.
 
-You get:
+<p align="center"><img src="docs/window.png" width="420" alt="The Evil Fast Cut window: a video picked, sliders for silence level, minimum silence, padding and breaths, output checkboxes and the Cut button"></p>
 
-- **`MyVideo-fastcut.xml`**: open it in FilmCraft with **File ▸ Import** and you get a new
+It saves, next to your video:
+
+- **`MyVideo-fastcut.xml`**: in **FilmCraft**, open it with **File ▸ Import** and you get a new
   sequence, *MyVideo (fast cut)*, with every kept piece on the timeline, video and sound linked.
-  You can still drag any cut open again if it took too much.
-- **Other editors:** the same XML opens in **DaVinci Resolve** (File ▸ Import ▸ Timeline…) and
-  **Premiere Pro** (File ▸ Import…). For **Final Cut Pro**, add `--fcpxml MyVideo.fcpxml` and
-  open that with File ▸ Import ▸ XML….
-- **A trimmed video** too, if you add `--video MyVideo-cut.mp4`.
+  You can still drag any cut open again if it took too much. The same file opens in
+  **DaVinci Resolve** (File ▸ Import ▸ Timeline…) and **Premiere Pro** (File ▸ Import…).
+- **`MyVideo-fastcut.fcpxml`** for **Final Cut Pro** (File ▸ Import ▸ XML…), if you tick it.
+- **`MyVideo-cut.mp4`**, a trimmed copy of the video, if you tick it.
 
-FilmCraft doesn't load plug-ins yet, so Evil Fast Cut is a small program you run next to it.
+FilmCraft doesn't load plug-ins yet, so Evil Fast Cut is a small app you use next to it.
 
 ## Install
 
@@ -43,61 +44,64 @@ Get the download for your computer from the
 | Windows | `evil-fastcut-windows.zip` |
 | Mac (Intel or Apple chip) | `evil-fastcut-macos.zip` |
 | Linux | `evil-fastcut-linux.zip` |
-| Linux with Flatpak only (Steam Deck, Fedora Silverblue, Bazzite…) | `evil-fastcut.flatpak` |
+| Linux with Flatpak (Steam Deck, Fedora Silverblue, Bazzite…) | `evil-fastcut.flatpak` |
 
-**Flatpak:** ffmpeg is already inside, so there's nothing else to install. Install and run it with
-
-```sh
-flatpak install --user evil-fastcut.flatpak
-flatpak run io.github.evelynnsrepos.EvilFastCut ~/Videos/MyVideo.mp4 --breaths
-```
-
-It can read and write videos in your home folder and on external drives (`/media`, `/run/media`, `/mnt`).
+**Flatpak:** ffmpeg is already inside, so there's nothing else to install. Double-click the file
+to install it in your software centre, or run `flatpak install --user evil-fastcut.flatpak`.
+Evil Fast Cut then shows up in your apps menu. It can open videos in your home folder and on
+external drives.
 
 **Windows, Mac, Linux zip:**
 
 1. Install **ffmpeg** (it reads the sound): [ffmpeg.org/download.html](https://ffmpeg.org/download.html).
    Windows: `winget install ffmpeg` · Mac: `brew install ffmpeg` · Linux: `sudo apt install ffmpeg`.
 2. Unzip the download.
-3. **Mac only:** the first time, macOS blocks programs from the internet. In Terminal, in the
-   unzipped folder, run `xattr -d com.apple.quarantine evil-fastcut` once.
+3. Open the app:
+   - **Windows:** double-click `evil-fastcut-gui.exe`. If Windows SmartScreen warns you, click
+     **More info ▸ Run anyway** (the app isn't signed).
+   - **Mac:** move **Evil Fast Cut** to Applications. The first time, right-click it ▸ **Open** ▸
+     **Open** (the app isn't signed, so macOS asks once).
+   - **Linux:** double-click `evil-fastcut-gui`, or run `./evil-fastcut-gui`.
 
 ## Use it
 
-Open a terminal in the folder where you unzipped it and run:
+1. Drop a video on the window, or click the big button to choose one.
+2. Set how it cuts (hover over a slider for tips):
+   - **Silence is quieter than** (default -40 dB): noisy room or hum: try -35. Very quiet voice: try -50.
+   - **Only cut silences longer than** (0.5 s): lower it for a snappier, jump-cut style.
+   - **Keep around each cut** (0.1 s): raise it if the starts or ends of words get clipped.
+   - **Also cut breaths**, and how much quieter than your voice a breath is (12 dB). Lower that
+     if loud breaths stay in.
+3. Tick what to save, and click **✂ Cut**.
+4. In FilmCraft: **File ▸ Import** and pick `MyVideo-fastcut.xml`.
+
+Breath detection is a best guess: an "s" or "f" at the end of a word that trails off can look
+like a breath, so check the cuts and drag them open in your editor if needed.
+
+### Command line
+
+The download also has `evil-fastcut`, the same thing for the terminal and for scripts
+(Flatpak: `flatpak run --command=evil-fastcut io.github.evelynnsrepos.EvilFastCut ...`):
 
 ```sh
-evil-fastcut "C:\Videos\MyVideo.mp4"            # Windows (or drag the video onto the window)
-./evil-fastcut ~/Videos/MyVideo.mp4             # Mac / Linux
-./evil-fastcut MyVideo.mp4 --breaths            # also cut breaths
-./evil-fastcut MyVideo.mp4 --video MyVideo-cut.mp4   # also save a trimmed video
+evil-fastcut MyVideo.mp4 --breaths --fcpxml MyVideo.fcpxml --video MyVideo-cut.mp4
 ```
-
-Then in FilmCraft: **File ▸ Import**, pick `MyVideo-fastcut.xml`.
-
-### Settings
 
 | Option | Default | What it does |
 |---|---|---|
-| `--threshold DB` | `-40` | Anything quieter than this is silence. Noisy room or hum: try `-35`. Very quiet voice: try `-50`. |
-| `--min-silence SEC` | `0.5` | Only cut silences at least this long. Lower it (`0.3`) for a snappier, jump-cut style. |
-| `--padding SEC` | `0.1` | Sound kept before and after each cut so words aren't clipped. |
-| `--breaths` | off | Also cut breaths: quiet sounds with no voice in them, 0.15-1.2 s long, between phrases. |
-| `--breath-drop DB` | `12` | How much quieter than your speech a breath is. Lower it (`8`) if loud breaths stay in. |
-| `--xml FILE` | next to the video | Where to save the sequence. |
+| `--threshold DB` | `-40` | Anything quieter than this is silence. |
+| `--min-silence SEC` | `0.5` | Only cut silences at least this long. |
+| `--padding SEC` | `0.1` | Sound kept before and after each cut. |
+| `--breaths` | off | Also cut breaths (quiet, voiceless sounds 0.15-1.2 s long between phrases). |
+| `--breath-drop DB` | `12` | How much quieter than your speech a breath is. |
+| `--xml FILE` | next to the video | Where to save the FilmCraft / Resolve / Premiere timeline. |
 | `--fcpxml FILE` | off | Also save an FCPXML for Final Cut Pro. |
 | `--video FILE` | off | Also render a trimmed video with ffmpeg. |
-
-Run `evil-fastcut --help` to see them all.
-
-**Tips:** if words get cut off, raise `--padding` or lower `--threshold`. Breath detection is a
-best guess: an "s" or "f" at the end of a word that trails off can look like a breath, so check
-the cuts and drag them open in FilmCraft if needed.
 
 ## Build from source (for developers)
 
 ```sh
-cargo build --release   # → target/release/evil-fastcut
+cargo build --release   # → target/release/evil-fastcut-gui (window) and evil-fastcut (command line)
 cargo test
 ```
 

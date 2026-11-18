@@ -18,9 +18,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - { os: ubuntu-latest, name: linux, exe: evil-fastcut }
-          - { os: windows-latest, name: windows, exe: evil-fastcut.exe }
-          - { os: macos-latest, name: macos, exe: evil-fastcut }
+          - { os: ubuntu-latest, name: linux, exe: "" }
+          - { os: windows-latest, name: windows, exe: .exe }
+          - { os: macos-latest, name: macos, exe: "" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -34,11 +34,34 @@ jobs:
           cargo build --release --target x86_64-apple-darwin
           cargo build --release --target aarch64-apple-darwin
           mkdir -p target/release
-          lipo -create -output target/release/evil-fastcut target/{x86_64,aarch64}-apple-darwin/release/evil-fastcut
+          for b in evil-fastcut evil-fastcut-gui; do
+            lipo -create -output target/release/$b target/{x86_64,aarch64}-apple-darwin/release/$b
+          done
       - run: |
-          mkdir out
-          cp target/release/${{ matrix.exe }} out/
-          cd out && 7z a ../evil-fastcut-${{ matrix.name }}.zip ${{ matrix.exe }}
+          mkdir -p out
+          cp target/release/evil-fastcut${{ matrix.exe }} out/
+          if [ "${{ matrix.name }}" = macos ]; then
+            app="out/Evil Fast Cut.app/Contents"
+            mkdir -p "$app/MacOS"
+            cp target/release/evil-fastcut-gui "$app/MacOS/"
+            cat > "$app/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>Evil Fast Cut</string>
+            <key>CFBundleExecutable</key><string>evil-fastcut-gui</string>
+            <key>CFBundleIdentifier</key><string>io.github.evelynnsrepos.EvilFastCut</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${TAG#v}</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict></plist>
+          PLIST
+          else
+            cp target/release/evil-fastcut-gui${{ matrix.exe }} out/
+          fi
+          cd out
+          # zip keeps the programs runnable on Mac and Linux; Windows has 7-Zip instead.
+          if [ "${{ matrix.name }}" = windows ]; then 7z a ../evil-fastcut-windows.zip .; else zip -ry ../evil-fastcut-${{ matrix.name }}.zip .; fi
         shell: bash
       - uses: actions/upload-artifact@v4
         with: { name: "${{ matrix.name }}", path: "evil-fastcut-${{ matrix.name }}.zip" }

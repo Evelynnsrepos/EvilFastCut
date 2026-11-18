@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Evil Fast Cut
+Comment=Cut the silences and breaths out of a video
+Exec=evil-fastcut-gui %f
+Icon=io.github.evelynnsrepos.EvilFastCut
+Categories=AudioVideo;Video;AudioVideoEditing;
+Terminal=false

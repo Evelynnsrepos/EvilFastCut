@@ -10,5 +10,13 @@ publish = false
 name = "evil-fastcut"
 path = "src/main.rs"
 
+[[bin]]
+name = "evil-fastcut-gui"
+path = "src/gui.rs"
+
+[dependencies]
+eframe = "0.37"
+rfd = "0.18"
+
 [profile.release]
 opt-level = 3

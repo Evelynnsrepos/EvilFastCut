@@ -12,6 +12,7 @@ const BREATH_MIN: usize = 15; // frames: a breath is 0.15 ..
 const BREATH_MAX: usize = 120; // .. 1.2 s long
 const VOICED: f32 = 0.45; // normalised autocorrelation above this means a voice is sounding
 
+#[derive(Clone, Copy)]
 pub struct Settings {
     /// Quieter than this (dBFS) counts as silence.
     pub threshold_db: f32,

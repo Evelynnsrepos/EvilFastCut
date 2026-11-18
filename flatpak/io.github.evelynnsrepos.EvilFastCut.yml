@@ -1,4 +1,4 @@
-# Flatpak of the command-line tool, with its own ffmpeg (LGPL build: decodes everything,
+# Flatpak of the window (and the command-line tool: flatpak run --command=evil-fastcut ...), with its own ffmpeg (LGPL build: decodes everything,
 # renders --video with ffmpeg's built-in encoders). Built by .github/workflows/release.yml.
 id: io.github.evelynnsrepos.EvilFastCut
 runtime: org.freedesktop.Platform
@@ -6,8 +6,12 @@ runtime-version: "24.08"
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-command: evil-fastcut
+command: evil-fastcut-gui
 finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
   # Read videos and write the cut files next to them.
   - --filesystem=home
   - --filesystem=/media
@@ -29,9 +33,12 @@ modules:
     buildsystem: simple
     build-options:
       append-path: /usr/lib/sdk/rust-stable/bin
+      build-args: [--share=network] # cargo downloads crates; fine for our own bundle, not for Flathub
     build-commands:
-      - cargo build --release --offline # no crate dependencies, so no network needed
-      - install -Dm755 target/release/evil-fastcut /app/bin/evil-fastcut
+      - cargo build --release
+      - install -Dm755 -t /app/bin target/release/evil-fastcut target/release/evil-fastcut-gui
+      - install -Dm644 assets/io.github.evelynnsrepos.EvilFastCut.desktop /app/share/applications/io.github.evelynnsrepos.EvilFastCut.desktop
+      - install -Dm644 assets/io.github.evelynnsrepos.EvilFastCut.svg /app/share/icons/hicolor/scalable/apps/io.github.evelynnsrepos.EvilFastCut.svg
     sources:
       - type: dir
         path: ..
